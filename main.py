@@ -1,9 +1,14 @@
 import os
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
 
-from preprocess_data import preprocess_and_save
+# 1) Se manca il file preprocessato, lo generiamo
+if not os.path.exists("preprocessed_bearing_data.npz"):
+    print("⚙️  preprocessed_bearing_data.npz non trovato, avvio preprocessing…")
+    from preprocess_data import preprocess_and_save
+    preprocess_and_save()
+
+# 2) Import dei moduli
 from data_utils       import load_dataset, prepare_dataloaders
 from metrics_utils    import compute_metrics
 from train_utils      import train_epoch
@@ -11,55 +16,52 @@ from plot_utils       import plot_training_curves, plot_sample_bar
 from model_evidential import EvidentialVGG
 
 def main():
-    # 1) preprocessing se serve
-    if not os.path.exists("preprocessed_bearing_data.npz"):
-        print("⚙️ preprocessing…")
-        preprocess_and_save()
-
-    # 2) carica dati e dataloader
+    # 3) Carica X,y,classes
     X, y, class_names = load_dataset("preprocessed_bearing_data.npz")
+
+    # 4) DataLoader
     train_loader, test_loader, num_classes = prepare_dataloaders(
-        X, y, class_names, batch_size=64, test_size=0.3
+        X, y, class_names, batch_size=32
     )
 
-    # 3) modello + ottim + scheduler
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = EvidentialVGG(num_classes, in_channels=1).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
-    scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
+    # 5) Device, modello e ottimizzatore
+    device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model     = EvidentialVGG(num_classes=num_classes, input_channels=1).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
-    # 4) storici
-    train_hist = {k: [] for k in
-                  ["accuracy","corr_evd","mis_evd","corr_unc","mis_unc"]}
+    # 6) Storico metriche
+    train_hist = {k: [] for k in ["accuracy","corr_evd","mis_evd","corr_unc","mis_unc"]}
     test_hist  = {k: [] for k in train_hist}
 
-    # 5) loop epoche
-    epochs = 100
-    for epoch in range(1, epochs+1):
-        lr = optimizer.param_groups[0]["lr"]
-        print(f"\n→ Epoch {epoch}/{epochs}  LR={lr:.4e}")
-        lambda_coef = 0.001 * min(1.0, epoch/10.0)
+    # 7) Loop su 50 epoche
+    num_epochs = 50
+    for epoch in range(1, num_epochs+1):
+        lambda_coef = 0.001 * min(1.0, epoch / 10.0)
 
-        train_epoch(model, train_loader, optimizer, device, lambda_coef,
-                    {"risk_weight":1.0, "target_uncertainty":0.06})
+        train_epoch(
+            model, train_loader, optimizer, device, lambda_coef,
+            {"risk_weight":1.0, "target_uncertainty":0.06}
+        )
 
-        # step scheduler
-        scheduler.step()
+        t_metrics = compute_metrics(model, train_loader, device, num_classes)
+        v_metrics = compute_metrics(model, test_loader,  device, num_classes)
 
-        # metriche
-        t_met = compute_metrics(model, train_loader, device, num_classes)
-        v_met = compute_metrics(model, test_loader,  device, num_classes)
+        for key, val in zip(train_hist, t_metrics):
+            train_hist[key].append(val)
+        for key, val in zip(test_hist,  v_metrics):
+            test_hist[key].append(val)
 
-        for key,val in zip(train_hist, t_met): train_hist[key].append(val)
-        for key,val in zip(test_hist,  v_met): test_hist[key].append(val)
+        print(f"Epoch {epoch:2d}/{num_epochs}  "
+              f"TrainAcc={train_hist['accuracy'][-1]:.3f}  "
+              f"TestAcc={test_hist['accuracy'][-1]:.3f}")
 
-        print(f" TrainAcc={t_met[0]:.4f}  TestAcc={v_met[0]:.4f}")
-
-    # 6) salva e plot
-    torch.save(model.state_dict(), "evgg_model.pth")
+    # 8) Salva + plot
+    torch.save(model.state_dict(), "evidential_cnn_model.pth")
     plot_training_curves(train_hist, test_hist)
-    X_full = torch.tensor(X, dtype=torch.float32).permute(0,3,1,2)
-    plot_sample_bar(model, X_full.to(device), device, num_classes)
 
-if __name__=="__main__":
+    # 9) Bar chart 10 random sample
+    X_full = torch.tensor(X, dtype=torch.float32).permute(0,3,1,2)
+    plot_sample_bar(model, X_full, device, num_classes)
+
+if __name__ == "__main__":
     main()
