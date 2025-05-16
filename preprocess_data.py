@@ -2,7 +2,7 @@ import os
 import numpy as np
 from scipy.io import loadmat
 
-# Directory contenente i .mat usati nel paper (1 hp only)
+# Cartella .mat e file usati (solo quelli a 1 HP)
 MAT_DIR = "bearing_data"
 FILES_LABELS = [
     ("Dati_normali_HP(1).mat",    "Normal"),
@@ -20,15 +20,14 @@ FILES_LABELS = [
 def extract_de_signal(path: str) -> np.ndarray:
     data = loadmat(path)
     keys = [k for k in data if not k.startswith("__")]
-    # Provo a pescare 'DE_time'
     for k in keys:
         if "DE_time" in k:
             return data[k].flatten()
-    # Fallback: prima colonna del primo array 2D
+    # fallback
     for k in keys:
         arr = data[k]
         if isinstance(arr, np.ndarray) and arr.ndim == 2:
-            return arr[:,0]
+            return arr[:, 0]
     raise RuntimeError(f"Nessun segnale trovato in {path}")
 
 def segment_signals(signals, labels, window=784, overlap=684):
@@ -36,38 +35,37 @@ def segment_signals(signals, labels, window=784, overlap=684):
     step = window - overlap
     for sig, lbl in zip(signals, labels):
         for i in range(0, len(sig) - window + 1, step):
-            Xs.append(sig[i:i+window])
+            Xs.append(sig[i : i + window])
             Ys.append(lbl)
     return np.array(Xs), np.array(Ys)
 
-def reshape_to_2D(X, size=(28,28)):
+def reshape_to_2D(X, size=(28, 28)):
     N, W = X.shape
     H, L = size
-    assert H*L == W, "window/size mismatch"
-    return X.reshape(N, H, L)[...,None]
+    assert H * L == W, "window_size non compatibile con size"
+    return X.reshape(N, H, L)[..., None]
 
 def preprocess_and_save():
     signals, labels = [], []
     for fname, lbl in FILES_LABELS:
-        path = os.path.join(MAT_DIR, fname)
-        print(f"Loading {path} as '{lbl}'")
-        signals.append(extract_de_signal(path))
+        p = os.path.join(MAT_DIR, fname)
+        print(f"Loading {p} as {lbl}")
+        signals.append(extract_de_signal(p))
         labels.append(lbl)
-
-    print("Segmenting…")
+    print("Segmenting signals...")
     X_seg, y_seg = segment_signals(signals, labels)
-
-    print("Reshaping to 2D (28×28)…")
+    print(f"Total segments: {X_seg.shape[0]}")
+    print("Reshaping to 2D maps...")
     X2 = reshape_to_2D(X_seg)
-
     class_names = sorted(np.unique(y_seg))
     y_enc = np.array([class_names.index(l) for l in y_seg], dtype=np.int64)
-
     out = "preprocessed_bearing_data.npz"
-    np.savez(out,
-             X_2D=X2.astype(np.float32),
-             y_encoded=y_enc,
-             class_names=np.array(class_names))
+    np.savez(
+        out,
+        X_2D=X2.astype(np.float32),
+        y_encoded=y_enc,
+        class_names=np.array(class_names),
+    )
     print(f"Saved → {out}")
 
 if __name__ == "__main__":
