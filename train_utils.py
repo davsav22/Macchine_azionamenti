@@ -4,12 +4,8 @@ import torch
 from torch.amp import autocast, GradScaler
 from model_evidential import evidential_loss
 
-def train_epoch(model, loader, optimizer, device, lambda_coef, risk_params):
-    """
-    Esegue un'epoca di training:
-      - Se CUDA disponibile: usa mixed precision (autocast + GradScaler).
-      - Altrimenti: training in float32 puro.
-    """
+def train_epoch(model, loader, optimizer, device,
+                lambda_coef, risk_params):
     use_amp = (device.type == 'cuda')
     scaler  = GradScaler(enabled=use_amp)
 
@@ -19,7 +15,6 @@ def train_epoch(model, loader, optimizer, device, lambda_coef, risk_params):
         optimizer.zero_grad()
 
         if use_amp:
-            # Prima positional arg = device type ('cuda'), poi enabled flag
             with autocast('cuda', enabled=True):
                 ev   = model(Xb)
                 loss = evidential_loss(
@@ -29,12 +24,10 @@ def train_epoch(model, loader, optimizer, device, lambda_coef, risk_params):
                     target_uncertainty = risk_params["target_uncertainty"],
                     num_classes        = Yb.size(1)
                 )
-            # backward & step scalati
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
         else:
-            # CPU: no AMP
             ev   = model(Xb)
             loss = evidential_loss(
                 Yb, ev,
