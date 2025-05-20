@@ -1,29 +1,47 @@
+# train_utils.py
+
 import torch
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from model_evidential import evidential_loss
 
-def train_epoch(model, loader, optimizer, device,
-                lambda_coef, risk_params):
+def train_epoch(model, loader, optimizer, device, lambda_coef, risk_params):
     """
-    Un’epoca di training in mixed precision (se CUDA disponibile).
+    Esegue un'epoca di training:
+      - Se CUDA disponibile: usa mixed precision (autocast + GradScaler).
+      - Altrimenti: training in float32 puro.
     """
-    model.train()
-    use_amp = (device.type == "cuda")
+    use_amp = (device.type == 'cuda')
     scaler  = GradScaler(enabled=use_amp)
 
+    model.train()
     for Xb, Yb in loader:
-        Xb, Yb = Xb.to(device), Yb.to(device)
+        Xb, Yb = Xb.to(device, non_blocking=True), Yb.to(device, non_blocking=True)
         optimizer.zero_grad()
 
-        with autocast(enabled=use_amp):
+        if use_amp:
+            # Prima positional arg = device type ('cuda'), poi enabled flag
+            with autocast('cuda', enabled=True):
+                ev   = model(Xb)
+                loss = evidential_loss(
+                    Yb, ev,
+                    lambda_coef        = lambda_coef,
+                    risk_weight        = risk_params["risk_weight"],
+                    target_uncertainty = risk_params["target_uncertainty"],
+                    num_classes        = Yb.size(1)
+                )
+            # backward & step scalati
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            # CPU: no AMP
             ev   = model(Xb)
             loss = evidential_loss(
                 Yb, ev,
-                lambda_coef=lambda_coef,
-                risk_weight=risk_params["risk_weight"],
-                target_uncertainty=risk_params["target_uncertainty"],
-                num_classes=Yb.size(1)
+                lambda_coef        = lambda_coef,
+                risk_weight        = risk_params["risk_weight"],
+                target_uncertainty = risk_params["target_uncertainty"],
+                num_classes        = Yb.size(1)
             )
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+            loss.backward()
+            optimizer.step()
