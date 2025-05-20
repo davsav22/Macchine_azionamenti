@@ -1,3 +1,7 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
 # plot_utils.py
 
 import matplotlib.pyplot as plt
@@ -53,3 +57,29 @@ def plot_training_curves(train_hist, test_hist):
     plt.savefig("article_style_evidence_uncertainty.png")
     plt.show()
 
+
+def plot_sample_bar(model, X_full, device, num_classes):
+    model.eval()
+    idx = torch.randperm(X_full.size(0))[:10]
+    X10 = X_full[idx].to(device)
+    with torch.no_grad():
+        ev = model(X10)
+        alpha = ev+1
+        S     = alpha.sum(1,keepdim=True)
+        P     = (alpha/S).cpu().numpy()
+        U     = (num_classes/(S+num_classes)).squeeze(1).cpu().numpy()
+
+    fig,ax = plt.subplots(figsize=(10,5))
+    x = np.arange(10); w=0.08
+    for c in range(num_classes):
+        ax.bar(x + (c-num_classes/2)*w, P[:,c], w, alpha=0.7)
+    ax2 = ax.twinx()
+    ax2.plot(x,U,'ko-',label="uncertainty")
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"s{i+1}" for i in x],rotation=45)
+    ax.set_xlabel("Sample"); ax.set_ylabel("Probability")
+    ax2.set_ylabel("Uncertainty")
+    ax.set_title("Class probabilities + uncertainty (10 samples)")
+    plt.tight_layout()
+    plt.savefig("bar_10.png")
+    plt.show()
