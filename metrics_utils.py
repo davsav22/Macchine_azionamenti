@@ -5,19 +5,20 @@ def compute_metrics(model, loader, device, num_classes):
     corr = tot = 0
     sum_ce = sum_me = sum_cu = sum_mu = 0.0
     cnt_c = cnt_m = 0
+
     with torch.no_grad():
-        for X, Y in loader:
-            X, Y = X.to(device), Y.to(device)
-            ev = model(X)               # (B,C)
+        for Xb, Yb in loader:
+            Xb, Yb = Xb.to(device), Yb.to(device)
+            ev = model(Xb)
             alpha = ev + 1
             S = alpha.sum(dim=1, keepdim=True)
             p = alpha / S
-            preds  = p.argmax(dim=1)
-            labels = Y.argmax(dim=1)
-            mask   = preds.eq(labels)
+            preds = p.argmax(dim=1)
+            labels = Yb.argmax(dim=1)
 
+            mask = preds.eq(labels)
             corr += mask.sum().item()
-            tot  += X.size(0)
+            tot += Xb.size(0)
 
             te = alpha.sum(dim=1)
             un = num_classes / (S.squeeze(1) + num_classes)
@@ -29,9 +30,10 @@ def compute_metrics(model, loader, device, num_classes):
             cnt_c += mask.sum().item()
             cnt_m += (~mask).sum().item()
 
-    acc     = corr / tot if tot else 0.0
-    avg_ce  = sum_ce / cnt_c if cnt_c else 0.0
-    avg_me  = sum_me / cnt_m if cnt_m else 0.0
-    avg_cu  = sum_cu / cnt_c if cnt_c else 0.0
-    avg_mu  = sum_mu / cnt_m if cnt_m else 0.0
+    acc = corr / tot if tot else 0.0
+    avg_ce = sum_ce / cnt_c if cnt_c else 0.0
+    avg_me = sum_me / cnt_m if cnt_m else 0.0
+    avg_cu = sum_cu / cnt_c if cnt_c else 0.0
+    avg_mu = sum_mu / cnt_m if cnt_m else 0.0
+
     return acc, avg_ce, avg_me, avg_cu, avg_mu
