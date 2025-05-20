@@ -13,7 +13,7 @@ from data_utils import load_dataset, prepare_dataloaders
 from metrics_utils import compute_metrics
 from train_utils import train_epoch
 from plot_utils import plot_training_curves, plot_sample_bar
-from model_evidential import EvidentialVGG
+from model_evidential import EvidentialCNN
 
 def main():
     # 3) Carica dati
@@ -26,7 +26,7 @@ def main():
 
     # 5) Device, modello, ottimizzatore
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = EvidentialVGG(num_classes=num_classes, input_channels=1).to(device)
+    model = EvidentialCNN(num_classes=num_classes, input_channels=1).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
     # 6) Storici
